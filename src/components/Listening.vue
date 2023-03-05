@@ -7,9 +7,12 @@
     <p>Правильных ответов: {{totalCorrectAnswers}}</p>
     <p>Неправильных ответов: {{totalWrongAnswers}}</p>
     <p>Процент правильных ответов: {{calculateAnswersPercentage}}%</p>
-    <p>Сложность: {{difficulty}}</p>
+    <p>Выбранная сложность: {{difficultyDescription[difficulty]}}</p>
     <div class="difficulty">
       <p>Выбрать сложность:</p>
+      <p><strong>Easy</strong> - одна октава, тональность не меняется</p>
+      <p><strong>Normal</strong> - три октавы, тональность не меняется</p>
+      <p><strong>Hard</strong> - три октавы, тональность меняется на каждом вопросе</p>
       <input type="radio" v-model="difficulty" id="easy" value=0>
       <label for="easy">Easy</label>
       <input type="radio" v-model="difficulty" id="normal" value=1>
@@ -62,6 +65,8 @@ export default {
 
   data() {
     return {
+      difficultyDescription: ['Easy', 'Normal', 'Hard'],
+
       cadencePlayed: false,
       cadence: '',
 
@@ -71,6 +76,7 @@ export default {
       answered: true,
       totalCorrectAnswers: 0,
       totalWrongAnswers: 0,
+      currentNoteOctave: 1,
 
       keys: [],
       majorKeys: ['C','Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'],
@@ -115,8 +121,8 @@ export default {
       this.getKeyAndMode('random', 'major', +this.difficulty)
     },
 
-    getKeyAndMode(keyName = 'random', modeName='major', difficulty = 1) {
-      getFilenamesArray(
+    getKeyAndMode(keyName = 'random', modeName='major', difficulty = 2) {
+      return getFilenamesArray(
           'http://localhost:4000/api/alenmethod',
           {
             "keyName": keyName,
@@ -127,20 +133,28 @@ export default {
         this.cadence = data.cadence
         this.notesArray = data.notesArray
         this.currentKey = data.currentKey
+        this.cadencePlayed = false
+        this.answered = true
       })
     },
 
     playNote() {
       if (this.answered) {
         while (this.correctAnswer === this.previousCorrectAnswer) {
-          this.correctAnswer = Math.floor(Math.random() * this.notesArray.length % 7)
+          if (this.difficulty) {
+          this.correctAnswer = Math.floor(Math.random() * this.notesArray.length)
+          } else {
+            this.correctAnswer = Math.floor(Math.random()*7 + 7)
+          }
+          this.currentNoteOctave = Math.ceil(this.correctAnswer / 7)
         }
         this.answered = false
       }
+
       const notePath = require(`@/assets/audio/${this.notesArray[this.correctAnswer].fileName}`)
-      console.log(notePath)
       const note = new Audio(notePath)
       note.volume = this.audioVolume/100
+
       this.cadencePlayed ? note.play() : this.playCadence()
     },
 
@@ -154,16 +168,15 @@ export default {
     },
 
     checkAnswer(event) {
-      if(+event.target.id === this.correctAnswer
-      || this.correctAnswer === 0 && +event.target.id === 7
-      ) {
+      const clickedNoteId = +event.target.id+(7*(this.currentNoteOctave-1))
+      if(clickedNoteId === this.correctAnswer || [0, 7, 14, 21].includes(clickedNoteId) && !(this.correctAnswer % 7)) {
         this.totalCorrectAnswers++
         event.target.style.backgroundColor = 'mediumseagreen'
         this.playCorrectAnswer()
       }
       else {
         this.totalWrongAnswers++
-        const buttonNotePath = require(`@/assets/audio/${this.notesArray[+event.target.id].fileName}`)
+        const buttonNotePath = require(`@/assets/audio/${this.notesArray[clickedNoteId].fileName}`)
         const answerNote = new Audio(buttonNotePath)
         event.target.style.backgroundColor = 'indianred'
         event.target.disabled = true
@@ -180,7 +193,13 @@ export default {
         id.style.backgroundColor = 'white'
         id.disabled = false
       })
-      this.playNote()
+      if (+this.difficulty === 2) {
+        this.getKeyAndMode().then(()=> {
+          this.playNote()
+        })
+      } else {
+        this.playNote()
+      }
     }
   },
 
